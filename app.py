@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from openai import OpenAI
 import os
+from dotenv import load_dotenv 
 import time 
-# api_key = os.environ.get('OPENAI_API_KEY')
+load_dotenv()
+api_key = os.getenv('OPENAI_API_KEY')
 
 # Update with your API key
 
