@@ -1,10 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,UploadFile,File
+from fastapi.responses import JSONResponse
 from openai import OpenAI
 import os
-from dotenv import load_dotenv 
 import time 
-load_dotenv()
-api_key = os.getenv('OPENAI_API_KEY')
+
+
+# api_key = os.environ.get('OPENAI_API_KEY')
 
 # Update with your API key
 
@@ -199,3 +200,55 @@ def process_question(assistant_id: str , thread_id: str, user_question: str):
     )
     message = messages.data[0].content[0].text.value
     return message
+
+@app.post("/upload_image")
+async def upload_image(assistant_id: str, thread_id: str, image: UploadFile = File(...)):
+    """Uploads an image to the specified thread and returns the assistant's response."""
+
+    # Upload the image file
+    image_data = await image.read()
+    with open(image.filename, "wb") as f:
+        f.write(image_data)
+    
+    file = client.files.create(
+        file=open(image.filename, "rb"),
+        purpose="vision"
+    )
+    
+    # Send a message to the thread with the uploaded image
+    client.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=[
+            {
+                "type": "image_file",
+                "image_file": {"file_id": file.id}
+            }
+        ]
+    )
+
+    # Run the assistant to process the image in the specified thread
+    run = client.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=assistant_id
+    )
+
+    # Check the run result
+    while True:
+        run = client.beta.threads.runs.retrieve(
+            thread_id=thread_id,
+            run_id=run.id
+        )
+        if run.status == "completed":
+            break
+        elif run.status == "failed":
+            print("Run failed with error:", run.last_error)
+            return JSONResponse(status_code=500, content={"error": "Run failed with error: " + run.last_error})
+        time.sleep(2)
+
+    # Get the assistant's response
+    messages = client.beta.threads.messages.list(
+        thread_id=thread_id
+    )
+    message = messages.data[0].content[0].text.value
+    return {"message": message}
