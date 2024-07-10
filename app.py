@@ -1,11 +1,14 @@
 from fastapi import FastAPI,UploadFile,File
 from fastapi.responses import JSONResponse
 from openai import OpenAI
+from dotenv import load_dotenv 
+load_dotenv()
+
 import os
 import time 
 
 
-# api_key = os.environ.get('OPENAI_API_KEY')
+api_key = os.environ.get('OPENAI_API_KEY')
 
 # Update with your API key
 
@@ -138,7 +141,7 @@ Instruction="""Parameters
 
 
 app = FastAPI()
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'),default_headers={"OpenAI-Beta": "assistants=v2"})
+client = OpenAI(api_key=api_key,default_headers={"OpenAI-Beta": "assistants=v2"})
 
 
 @app.post("/create_assistant")
