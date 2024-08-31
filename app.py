@@ -1,41 +1,19 @@
-from fastapi import FastAPI,UploadFile,File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 from dotenv import load_dotenv 
-load_dotenv()
-
+from pydantic import BaseModel
 import os
 import time 
+import json
 
+load_dotenv()
 
 api_key = os.environ.get('OPENAI_API_KEY')
 
-# Update with your API key
-
-# Open the CSV file in "read binary" (rb) mode, with the "assistants" purpose
-# file = client.files.create(
-#   file=open("TravelPreferences.csv", "rb"),
-#   purpose='assistants'
-# )
-
-# Create and configure the assistant
-# Add the CSV file from above (using tool type "retrieval")
-
 assistant_id = "asst_SOQL1w6InH94YnNLIhlDhGaD"
 
-Instruction="""Parameters
-- Name: pella
-- Species: {species}
-- Breed: {breed}
-- Age: 2
-- Reproductive status: {reproductive_status}
-- Gender: {gender}
-- Weight: {weight}
-- Visit scheduled: yes
-- Date and time: 20/10/2024
-
----
-
+Instruction = """
 {# If Visit Scheduled is Yes #}
 {{#if visit_scheduled == "Yes"}}
 🐾 **Veterinary Assistant:** Hi there! I'm your virtual assistant for your pet's upcoming visit. Let's gather some important details.
@@ -135,19 +113,24 @@ Instruction="""Parameters
 
 
 
-# Set your OpenAI API key securely (consider environment variables)
-# OpenAI.api_key = os.environ.get('OPENAI_API_KEY')  # Uncomment if using env variable
-
-
 
 app = FastAPI()
-client = OpenAI(api_key=api_key,default_headers={"OpenAI-Beta": "assistants=v2"})
+client = OpenAI(api_key=api_key, default_headers={"OpenAI-Beta": "assistants=v2"})
 
+class PetInfo(BaseModel):
+    name: str
+    species: str
+    breed: str
+    age: int
+    reproductive_status: str
+    gender: str
+    weight: float
+    visit_scheduled: bool
+    date_time: str = None
 
 @app.post("/create_assistant")
 def create_assistant():
     """Creates a new assistant and returns its ID."""
-
     assistant = client.beta.assistants.create(
         name="Assistant for test",
         instructions=Instruction,
@@ -155,36 +138,26 @@ def create_assistant():
     )
     return assistant.id
 
-
 @app.post("/create_thread")
 def create_thread():
     """Creates a new thread and returns its ID."""
-
-    thread = client.beta.threads.create(
-        
-    )
+    thread = client.beta.threads.create()
     return thread.id
 
-
 @app.get("/process_question")
-def process_question(assistant_id: str , thread_id: str, user_question: str):
+def process_question(assistant_id: str, thread_id: str, user_question: str):
     """Processes a user question within the specified thread and returns the assistant's response."""
-
-    # Create the user message
-    # Send a message to the thread
     client.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
-        content=user_question  # Send the current question
+        content=user_question
     )
 
-    # Run the assistant to process the current question
     run = client.beta.threads.runs.create(
         thread_id=thread_id,
         assistant_id=assistant_id
     )
 
-    # Check the run result
     while True:
         run = client.beta.threads.runs.retrieve(
             thread_id=thread_id,
@@ -197,7 +170,6 @@ def process_question(assistant_id: str , thread_id: str, user_question: str):
             return None
         time.sleep(2)
 
-    # Get the assistant's response
     messages = client.beta.threads.messages.list(
         thread_id=thread_id
     )
@@ -207,8 +179,6 @@ def process_question(assistant_id: str , thread_id: str, user_question: str):
 @app.post("/upload_image")
 async def upload_image(assistant_id: str, thread_id: str, image: UploadFile = File(...)):
     """Uploads an image to the specified thread and returns the assistant's response."""
-
-    # Upload the image file
     image_data = await image.read()
     with open(image.filename, "wb") as f:
         f.write(image_data)
@@ -218,7 +188,6 @@ async def upload_image(assistant_id: str, thread_id: str, image: UploadFile = Fi
         purpose="vision"
     )
     
-    # Send a message to the thread with the uploaded image
     client.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
@@ -230,13 +199,11 @@ async def upload_image(assistant_id: str, thread_id: str, image: UploadFile = Fi
         ]
     )
 
-    # Run the assistant to process the image in the specified thread
     run = client.beta.threads.runs.create(
         thread_id=thread_id,
         assistant_id=assistant_id
     )
 
-    # Check the run result
     while True:
         run = client.beta.threads.runs.retrieve(
             thread_id=thread_id,
@@ -249,7 +216,42 @@ async def upload_image(assistant_id: str, thread_id: str, image: UploadFile = Fi
             return JSONResponse(status_code=500, content={"error": "Run failed with error: " + run.last_error})
         time.sleep(2)
 
-    # Get the assistant's response
+    messages = client.beta.threads.messages.list(
+        thread_id=thread_id
+    )
+    message = messages.data[0].content[0].text.value
+    return {"message": message}
+
+@app.post("/process_pet_info")
+async def process_pet_info(assistant_id: str, thread_id: str, pet_info: PetInfo):
+    """Processes pet information and returns the assistant's response."""
+    pet_info_dict = pet_info.dict()
+    pet_info_str = json.dumps(pet_info_dict, indent=2)
+
+    client.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=f"Here's the pet information:\n\n{pet_info_str}\n\nPlease process this information and provide appropriate guidance or questions based on our veterinary assistant protocol."
+    )
+
+    run = client.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=assistant_id
+    )
+
+    while True:
+        run = client.beta.threads.runs.retrieve(
+            thread_id=thread_id,
+            run_id=run.id
+        )
+        if run.status == "completed":
+            break
+        elif run.status == "failed":
+            error_message = f"Run failed with error: {run.last_error}"
+            print(error_message)
+            raise HTTPException(status_code=500, detail=error_message)
+        time.sleep(2)
+
     messages = client.beta.threads.messages.list(
         thread_id=thread_id
     )
