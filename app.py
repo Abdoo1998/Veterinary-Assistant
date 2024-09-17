@@ -8,11 +8,8 @@ import time
 import json
 
 load_dotenv()
-
 api_key = os.environ.get('OPENAI_API_KEY')
-
 assistant_id = "asst_SOQL1w6InH94YnNLIhlDhGaD"
-
 
 app = FastAPI()
 client = OpenAI(api_key=api_key, default_headers={"OpenAI-Beta": "assistants=v2"})
@@ -35,15 +32,17 @@ def create_thread():
     return thread.id
 
 @app.post("/process_question")
-async def process_question(assistant_id: str, thread_id: str, user_question: str, image: UploadFile = File(None)):
-    """Processes a user question within the specified thread and returns the assistant's response. Optionally includes an image."""
+async def process_question(assistant_id: str, thread_id: str, user_question: str = None, image: UploadFile = File(None)):
+    """Processes a user question within the specified thread and returns the assistant's response. 
+    The user question is optional. Optionally includes an image."""
     
-    # Process text question
-    client.beta.threads.messages.create(
-        thread_id=thread_id,
-        role="user",
-        content=user_question
-    )
+    # Process text question if provided
+    if user_question:
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=user_question
+        )
 
     # Process image if provided
     if image:
@@ -66,6 +65,10 @@ async def process_question(assistant_id: str, thread_id: str, user_question: str
                 }
             ]
         )
+
+    # If neither question nor image is provided, raise an exception
+    if not user_question and not image:
+        raise HTTPException(status_code=400, detail="Either a question or an image must be provided")
 
     run = client.beta.threads.runs.create(
         thread_id=thread_id,
@@ -96,7 +99,6 @@ async def process_pet_info(assistant_id: str, thread_id: str, pet_info: PetInfo)
     """Processes pet information and returns the assistant's response."""
     pet_info_dict = pet_info.dict()
     pet_info_str = json.dumps(pet_info_dict, indent=2)
-
     client.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
