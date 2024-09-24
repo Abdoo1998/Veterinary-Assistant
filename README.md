@@ -107,7 +107,7 @@ The API will be available at `http://localhost:8000`.
 
 ## License
 
-[Specify your license here]
+This project is open source and available under the [MIT License](LICENSE).
 
 ## Contributing
 
